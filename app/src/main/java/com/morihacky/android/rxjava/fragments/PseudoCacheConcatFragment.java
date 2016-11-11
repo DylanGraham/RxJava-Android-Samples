@@ -7,24 +7,20 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-
+import butterknife.Bind;
+import butterknife.ButterKnife;
+import butterknife.OnClick;
 import com.morihacky.android.rxjava.R;
 import com.morihacky.android.rxjava.retrofit.Contributor;
 import com.morihacky.android.rxjava.retrofit.GithubApi;
 import com.morihacky.android.rxjava.retrofit.GithubService;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-
-import butterknife.Bind;
-import butterknife.ButterKnife;
-import butterknife.OnClick;
 import rx.Observable;
 import rx.Subscriber;
-import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
-import rx.functions.Func1;
+import rx.schedulers.Schedulers;
 import timber.log.Timber;
 
 public class PseudoCacheConcatFragment
@@ -56,12 +52,13 @@ public class PseudoCacheConcatFragment
         _adapter = new ArrayAdapter<>(getActivity(),
               R.layout.item_log,
               R.id.item_log,
-              new ArrayList<String>());
+              new ArrayList<>());
 
         _resultList.setAdapter(_adapter);
         _initializeCache();
 
-        Observable.concat(_getCachedData(), _getFreshData())
+        Observable.concatEager(_getCachedData(), _getFreshData())
+              .subscribeOn(Schedulers.io())
               .observeOn(AndroidSchedulers.mainThread())
               .subscribe(new Subscriber<Contributor>() {
                   @Override
@@ -112,12 +109,7 @@ public class PseudoCacheConcatFragment
         String githubToken = getResources().getString(R.string.github_oauth_token);
         GithubApi githubService = GithubService.createGithubService(githubToken);
         return githubService.contributors("square", "retrofit")
-              .flatMap(new Func1<List<Contributor>, Observable<Contributor>>() {
-                  @Override
-                  public Observable<Contributor> call(List<Contributor> contributors) {
-                      return Observable.from(contributors);
-                  }
-              });
+              .flatMap(Observable::from);
     }
 
     private void _initializeCache() {

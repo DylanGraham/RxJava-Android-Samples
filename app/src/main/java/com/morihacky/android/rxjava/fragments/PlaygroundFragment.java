@@ -11,21 +11,25 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.ProgressBar;
+
+import com.morihacky.android.rxjava.R;
+import com.morihacky.android.rxjava.RxUtils;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
 import butterknife.Bind;
 import butterknife.ButterKnife;
 import butterknife.OnClick;
-import com.morihacky.android.rxjava.R;
-import java.util.ArrayList;
-import java.util.List;
 import rx.Observable;
-import rx.Observer;
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.schedulers.Schedulers;
-import rx.subscriptions.CompositeSubscription;
 import timber.log.Timber;
 
-public class ConcurrencyWithSchedulersDemoFragment
+public class PlaygroundFragment
       extends BaseFragment {
 
     @Bind(R.id.progress_operation_running) ProgressBar _progress;
@@ -33,13 +37,14 @@ public class ConcurrencyWithSchedulersDemoFragment
 
     private LogAdapter _adapter;
     private List<String> _logs;
-    private CompositeSubscription _subscriptions = new CompositeSubscription();
+    private Subscription _subscription;
+    private int _attempt = 0;
 
     @Override
     public void onDestroy() {
         super.onDestroy();
         ButterKnife.unbind(this);
-        _subscriptions.clear();
+        RxUtils.unsubscribeIfNotNull(_subscription);
     }
 
     @Override
@@ -58,55 +63,40 @@ public class ConcurrencyWithSchedulersDemoFragment
     }
 
     @OnClick(R.id.btn_start_operation)
-    public void startLongOperation() {
+    public void startOperation() {
 
-        _progress.setVisibility(View.VISIBLE);
+        _logs.clear();
         _log("Button Clicked");
 
-        Subscription s = _getObservable()//
-              .subscribeOn(Schedulers.io())
-              .observeOn(AndroidSchedulers.mainThread())
-              .subscribe(_getObserver()); // Observer
+        _subscription =//
+              Observable//
+                    .from(Arrays.asList("a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"))//
+//                    .from(Arrays.asList("a", "b", "c", "d"))//
+                    .flatMap(s ->//
+                                Observable//
+                                      .just(s)//
+                                      .onBackpressureBuffer(3)
+                                      .flatMap(s1 -> {
 
-        _subscriptions.add(s);
-    }
+                                          _log(s1 + "start");
 
-    private Observable<Boolean> _getObservable() {
-        return Observable.just(true).map(aBoolean -> {
-            _log("Within Observable");
-            _doSomeLongOperation_thatBlocksCurrentThread();
-            return aBoolean;
-        });
-    }
+                                          if (s1.equalsIgnoreCase("b") && _attempt < 5) {
+                                              _attempt++;
+                                              return Observable.error(new Throwable("b can't be processed ("+(_attempt - 1)+")"));
+                                          }
 
-    /**
-     * Observer that handles the result through the 3 important actions:
-     *
-     * 1. onCompleted
-     * 2. onError
-     * 3. onNext
-     */
-    private Observer<Boolean> _getObserver() {
-        return new Observer<Boolean>() {
-
-            @Override
-            public void onCompleted() {
-                _log("On complete");
-                _progress.setVisibility(View.INVISIBLE);
-            }
-
-            @Override
-            public void onError(Throwable e) {
-                Timber.e(e, "Error in RxJava Demo concurrency");
-                _log(String.format("Boo! Error %s", e.getMessage()));
-                _progress.setVisibility(View.INVISIBLE);
-            }
-
-            @Override
-            public void onNext(Boolean bool) {
-                _log(String.format("onNext with return value \"%b\"", bool));
-            }
-        };
+                                          if (s1.equalsIgnoreCase("c") || s1.equalsIgnoreCase("f")) {
+                                              return Observable.just(s1);
+                                          } else {
+                                              return Observable.timer(2, TimeUnit.SECONDS).map(l -> s1);
+                                          }
+                                      })
+                                      .retryWhen(source -> source.delay(8, TimeUnit.SECONDS))
+                          /*, 3*/)
+                    .doOnNext(s -> _log(s + "stop"))
+                    .subscribeOn(Schedulers.io())
+                    .observeOn(AndroidSchedulers.mainThread())
+                    .subscribe();
     }
 
     // -----------------------------------------------------------------------------------

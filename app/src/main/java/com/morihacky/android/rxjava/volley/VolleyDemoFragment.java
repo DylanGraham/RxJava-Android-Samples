@@ -31,7 +31,6 @@ import butterknife.OnClick;
 import rx.Observable;
 import rx.Observer;
 import rx.android.schedulers.AndroidSchedulers;
-import rx.functions.Func0;
 import rx.schedulers.Schedulers;
 import rx.subscriptions.CompositeSubscription;
 import timber.log.Timber;
@@ -50,8 +49,8 @@ public class VolleyDemoFragment
 
     @Override
     public View onCreateView(LayoutInflater inflater,
-          @Nullable ViewGroup container,
-          @Nullable Bundle savedInstanceState) {
+                             @Nullable ViewGroup container,
+                             @Nullable Bundle savedInstanceState) {
         View layout = inflater.inflate(R.layout.fragment_volley, container, false);
         ButterKnife.bind(this, layout);
         return layout;
@@ -75,16 +74,19 @@ public class VolleyDemoFragment
         ButterKnife.unbind(this);
     }
 
+    /**
+     * Creates and returns an observable generated from the Future returned from 
+     * {@code getRouteData()}. The observable can then be subscribed to as shown in
+     * {@code startVolleyRequest()}
+     * @return Observable<JSONObject>
+     */
     public Observable<JSONObject> newGetRouteData() {
-        return Observable.defer(new Func0<Observable<JSONObject>>() {
-            @Override
-            public Observable<JSONObject> call() {
-                try {
-                    return Observable.just(getRouteData());
-                } catch (InterruptedException | ExecutionException e) {
-                    Log.e("routes", e.getMessage());
-                    return Observable.error(e);
-                }
+        return Observable.defer(() -> {
+            try {
+                return Observable.just(getRouteData());
+            } catch (InterruptedException | ExecutionException e) {
+                Log.e("routes", e.getMessage());
+                return Observable.error(e);
             }
         });
     }
@@ -123,11 +125,16 @@ public class VolleyDemoFragment
                   }
               }));
     }
-
+    /**
+     * Converts the Asynchronous Request into a Synchronous Future that can be used to
+     * block via {@code Future.get()}. Observables require blocking/synchronous functions
+     * @return JSONObject 
+     * @throws ExecutionException
+     * @throws InterruptedException
+     */
     private JSONObject getRouteData() throws ExecutionException, InterruptedException {
         RequestFuture<JSONObject> future = RequestFuture.newFuture();
         String url = "http://www.weather.com.cn/adat/sk/101010100.html";
-        final Request.Priority priority = Request.Priority.IMMEDIATE;
         JsonObjectRequest req = new JsonObjectRequest(Request.Method.GET, url, future, future);
         MyVolley.getRequestQueue().add(req);
         return future.get();
@@ -138,7 +145,7 @@ public class VolleyDemoFragment
 
     private void _setupLogger() {
         _logs = new ArrayList<>();
-        _adapter = new LogAdapter(getActivity(), new ArrayList<String>());
+        _adapter = new LogAdapter(getActivity(), new ArrayList<>());
         _logsList.setAdapter(_adapter);
     }
 
@@ -152,13 +159,9 @@ public class VolleyDemoFragment
             _logs.add(0, logMsg + " (NOT main thread) ");
 
             // You can only do below stuff on main thread.
-            new Handler(Looper.getMainLooper()).post(new Runnable() {
-
-                @Override
-                public void run() {
-                    _adapter.clear();
-                    _adapter.addAll(_logs);
-                }
+            new Handler(Looper.getMainLooper()).post(() -> {
+                _adapter.clear();
+                _adapter.addAll(_logs);
             });
         }
     }
